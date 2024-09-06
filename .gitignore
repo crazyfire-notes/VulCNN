@@ -283,5 +283,5 @@ cython_debug/
 # -------- File / Folder gitignore --------
 .env
 dataset/
-joern-cli/
+# joern-cli/
 # -------- File / Folder gitignore --------
