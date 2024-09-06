@@ -15,22 +15,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def get_all_files(path: Path) -> List[Path]:
-    """
-    Recursively get all files in the given directory.
-
-    Args:
-        path (Path): The directory path to search.
-
-    Returns:
-        List[Path]: A list of all file paths found.
-    """
-    logger.info(f"Getting all files from: {path}")
-    files = list(path.rglob("*"))
-    logger.info(f"Found {len(files)} files")
-    return files
-
-
 def parse_options() -> argparse.Namespace:
     """
     Parse command line arguments.
