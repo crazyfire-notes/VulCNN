@@ -53,7 +53,9 @@ def parse_options() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_subprocess(cmd: List[str], error_msg: str) -> Optional[str]:
+def run_subprocess(
+    cmd: List[str], error_msg: str, shell: bool = False
+) -> Optional[str]:
     """
     Run a subprocess command and handle potential errors.
 
@@ -65,12 +67,16 @@ def run_subprocess(cmd: List[str], error_msg: str) -> Optional[str]:
         Optional[str]: Command output if successful, None otherwise.
     """
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logger.info(f"Successfully ran command: {' '.join(cmd)}")
+        if shell:
+            cmd = " ".join(cmd)
+        result = subprocess.run(
+            cmd, check=True, capture_output=True, text=True, shell=shell
+        )
+        logger.info(f"Successfully ran command: {cmd}")
         return result.stdout
     except subprocess.CalledProcessError as e:
         logger.error(f"{error_msg}:")
-        logger.error(f"Command: {' '.join(cmd)}")
+        logger.error(f"Command: {cmd}")
         logger.error(f"Return code: {e.returncode}")
         logger.error(f"Error output: {e.stderr}")
         logger.error(f"Standard output: {e.stdout}")
@@ -161,7 +167,8 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
             pdg_files = list(out_file.glob("0-pdg*"))
             if pdg_files:
                 pdg_files[0].rename(out_file.with_suffix(".dot"))
-                out_file.rmdir()
+                if out_file.is_dir():
+                    out_file.rmdir()
                 logger.info(f"Renamed PDG file: {bin_file}")
     else:
         out_file = out_file.with_suffix(".json")
