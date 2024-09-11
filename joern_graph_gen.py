@@ -164,12 +164,33 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
         ]
 
         if run_subprocess(cmd, f"Error exporting PDG for {bin_file}"):
-            pdg_files = list(out_file.glob("0-pdg*"))
-            if pdg_files:
-                pdg_files[0].rename(out_file.with_suffix(".dot"))
-                if out_file.is_dir():
-                    out_file.rmdir()
-                logger.info(f"Renamed PDG file: {bin_file}")
+            if out_file.is_dir():
+                pdg_files = list(out_file.glob("*.dot"))
+                if pdg_files:
+                    # 合併所有 .dot 文件
+                    merged_dot = out_file.with_suffix(".dot")
+                    with merged_dot.open("w") as outfile:
+                        outfile.write("digraph G {\n")
+                        for pdg in pdg_files:
+                            with pdg.open() as infile:
+                                content = infile.read()
+                                # 移除每個文件的 digraph 包裹
+                                content = content.replace("digraph G {", "").replace(
+                                    "}", ""
+                                )
+                                outfile.write(content)
+                        outfile.write("}")
+                    logger.info(f"Merged PDG files into: {merged_dot}")
+
+                    # 刪除原始的 PDG 目錄
+                    import shutil
+
+                    shutil.rmtree(out_file)
+                    logger.info(f"Removed original PDG directory: {out_file}")
+                else:
+                    logger.warning(f"No .dot files found in {out_file}")
+            else:
+                logger.info(f"PDG output is already a file: {out_file}")
     else:
         out_file = out_file.with_suffix(".json")
         script_path = Path("graph-for-funcs.sc").resolve()
