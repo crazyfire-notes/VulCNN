@@ -137,20 +137,27 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
         repr (str): Representation type (pdg or lineinfo_json).
         joern_path (Path): Path to Joern CLI.
     """
+    logger.info(f"Starting export process for {bin_file}")
+    logger.info(f"Output directory: {outdir}")
+    logger.info(f"Representation type: {repr}")
+    logger.info(f"Joern path: {joern_path}")
+
     record_file = outdir / "export_res.txt"
     record_file.touch(exist_ok=True)
+    logger.info(f"Using record file: {record_file}")
 
     with record_file.open("r") as f:
         processed_files = set(f.read().splitlines())
+    logger.info(f"Number of previously processed files: {len(processed_files)}")
 
     name = bin_file.stem
     out_file = outdir / name
+    logger.info(f"Processing file: {name}")
+    logger.info(f"Output file/directory: {out_file}")
 
     if name in processed_files:
-        logger.info(f"File already processed: {name}")
+        logger.info(f"File {name} has already been processed. Skipping.")
         return
-
-    logger.info(f"Processing file: {name}")
 
     if repr == "pdg":
         joern_export_path = joern_path / "joern-export"
@@ -162,31 +169,42 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
             "--out",
             str(out_file),
         ]
+        logger.info(f"Executing Joern export command: {' '.join(cmd)}")
 
         if run_subprocess(cmd, f"Error exporting PDG for {bin_file}"):
+            logger.info("Joern export command completed successfully")
             if out_file.is_dir():
+                logger.info(f"Output is a directory: {out_file}")
                 pdg_files = list(out_file.glob("*.dot"))
+                logger.info(
+                    f"Found {len(pdg_files)} .dot files in the output directory"
+                )
+
                 if pdg_files:
-                    # 合併所有 .dot 文件
                     merged_dot = out_file.with_suffix(".dot")
+                    logger.info(f"Merging PDG files into: {merged_dot}")
+
                     with merged_dot.open("w") as outfile:
                         outfile.write("digraph G {\n")
                         for pdg in pdg_files:
+                            logger.info(f"Processing PDG file: {pdg}")
                             with pdg.open() as infile:
                                 content = infile.read()
-                                # 移除每個文件的 digraph 包裹
                                 content = content.replace("digraph G {", "").replace(
                                     "}", ""
                                 )
+                                outfile.write(f"subgraph cluster_{pdg.stem} {{\n")
                                 outfile.write(content)
+                                outfile.write("}\n")
                         outfile.write("}")
-                    logger.info(f"Merged PDG files into: {merged_dot}")
 
-                    # 刪除原始的 PDG 目錄
+                    logger.info(f"Merged PDG file created: {merged_dot}")
+
                     import shutil
 
+                    logger.info(f"Removing original PDG directory: {out_file}")
                     shutil.rmtree(out_file)
-                    logger.info(f"Removed original PDG directory: {out_file}")
+                    logger.info("Original PDG directory removed")
                 else:
                     logger.warning(f"No .dot files found in {out_file}")
             else:
@@ -196,7 +214,7 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
         script_path = Path("graph-for-funcs.sc").resolve()
         cmd = f'importCpg("{bin_file}")\rcpg.runScript("{script_path}").toString() |> "{out_file}"\r'
 
-        logger.info(f"Running Joern command: {cmd}")
+        logger.info(f"Running Joern command for JSON export: {cmd}")
         joern_process = subprocess.Popen(
             [str(joern_path / "joern")],
             stdin=subprocess.PIPE,
@@ -210,10 +228,14 @@ def joern_export(bin_file: Path, outdir: Path, repr: str, joern_path: Path) -> N
         if stderr:
             logger.error(f"Error exporting JSON for {bin_file}: {stderr}")
         else:
-            logger.info(f"Successfully exported JSON: {bin_file}")
+            logger.info(f"Successfully exported JSON: {out_file}")
+            logger.info(f"JSON export stdout: {stdout}")
 
+    logger.info(f"Adding {name} to the record file")
     with record_file.open("a") as f:
         f.write(f"{name}\n")
+
+    logger.info(f"Export process completed for {bin_file}")
 
 
 def main() -> None:
