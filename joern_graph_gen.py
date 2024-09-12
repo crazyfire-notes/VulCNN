@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import shutil
 import subprocess
 from functools import partial
 from multiprocessing import Pool
@@ -199,11 +200,20 @@ def merge_pdg_files(out_file: Path, logger: logging.Logger) -> bool:
             outfile.write("}")
 
         logger.info(f"Successfully merged PDG files to: {merged_dot}")
-        os.rmdir(out_file)
-        logger.info(f"Removed original PDG directory: {out_file}")
+
+        # 安全地刪除原始 PDG 目錄
+        backup_dir = out_file.with_name(out_file.name + "_backup")
+        logger.info(f"Creating backup of original PDG directory: {backup_dir}")
+        shutil.move(str(out_file), str(backup_dir))
+        logger.info(f"Original PDG directory moved to: {backup_dir}")
+
+        logger.info(f"Removing backup directory: {backup_dir}")
+        shutil.rmtree(backup_dir)
+        logger.info(f"Backup directory removed: {backup_dir}")
+
         return True
     except Exception as e:
-        logger.error(f"Error merging PDG files: {e}", exc_info=True)
+        logger.error(f"Error in merge_pdg_files: {e}", exc_info=True)
         return False
 
 
