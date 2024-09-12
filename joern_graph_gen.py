@@ -7,7 +7,7 @@ import sys
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import Callable, List, Optional
 
 
 def setup_logging(log_file: Path) -> logging.Logger:
@@ -180,26 +180,43 @@ def joern_export(
                 pdg_files = list(out_file.glob("*.dot"))
                 if pdg_files:
                     merged_dot = out_file.with_suffix(".dot")
-                    with merged_dot.open("w") as outfile:
-                        outfile.write("digraph G {\n")
-                        for pdg in pdg_files:
-                            with pdg.open() as infile:
-                                content = infile.read()
-                                content = content.replace("digraph G {", "").replace(
-                                    "}", ""
-                                )
-                                outfile.write(f"subgraph cluster_{pdg.stem} {{\n")
-                                outfile.write(content)
-                                outfile.write("}\n")
-                        outfile.write("}")
-                    import shutil
+                    logger.info(f"開始合併 PDG 文件到: {merged_dot}")
+                    try:
+                        with merged_dot.open("w", encoding="utf-8") as outfile:
+                            outfile.write("digraph G {\n")
+                            for pdg in pdg_files:
+                                logger.info(f"處理 PDG 文件: {pdg}")
+                                with pdg.open(encoding="utf-8") as infile:
+                                    content = infile.read()
+                                    # 移除開頭的 "digraph G {" 和結尾的 "}"
+                                    content = content.replace("digraph G {", "", 1)
+                                    content = content.rsplit("}", 1)[0]
+                                    outfile.write(f"subgraph cluster_{pdg.stem} {{\n")
+                                    outfile.write(content)
+                                    outfile.write("\n}\n")
+                            outfile.write("}")
+                        logger.info(f"成功合併 PDG 文件到: {merged_dot}")
 
-                    shutil.rmtree(out_file)
-                    logger.info(f"合併的 PDG 文件已創建: {merged_dot}")
+                        # 刪除原始的 PDG 目錄
+                        import shutil
+
+                        shutil.rmtree(out_file)
+                        logger.info(f"已刪除原始 PDG 目錄: {out_file}")
+
+                        return True
+                    except Exception as e:
+                        logger.error(f"合併 PDG 文件時發生錯誤: {e}")
+                        return False
                 else:
                     logger.warning(f"未在 {out_file} 中找到 .dot 文件")
-            return True
-    else:
+                    return False
+            else:
+                logger.info(f"PDG 輸出已經是一個文件: {out_file}")
+                return True
+        else:
+            logger.error(f"Joern 導出命令失敗: {bin_file}")
+            return False
+    else:  # JSON 導出
         out_file = out_file.with_suffix(".json")
         script_path = Path("graph-for-funcs.sc").resolve()
         if not script_path.exists():
@@ -216,8 +233,11 @@ def joern_export(
         if run_subprocess(cmd, f"導出 JSON 時出錯: {bin_file}", logger):
             logger.info(f"成功導出 JSON: {out_file}")
             return True
+        else:
+            logger.error(f"JSON 導出失敗: {bin_file}")
+            return False
 
-    return False
+    # return False
 
 
 def main():
