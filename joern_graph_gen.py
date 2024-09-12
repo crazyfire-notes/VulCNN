@@ -1,9 +1,7 @@
-# encoding=utf-8
 import argparse
 import logging
 import os
 import subprocess
-import sys
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
@@ -11,39 +9,38 @@ from typing import Callable, List, Optional
 
 
 def setup_logging(log_file: Path) -> logging.Logger:
-    """設置日誌記錄"""
+    """Set up logging configuration"""
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
-    # 檔案處理程序
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
+    handlers = [
+        logging.FileHandler(log_file, encoding="utf-8"),
+        logging.StreamHandler(),
+    ]
 
-    # 控制台處理程序
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-
-    # 格式化程序
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # 添加處理程序到日誌記錄器
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     return logger
 
 
-def parse_options() -> argparse.Namespace:
-    """解析命令行參數"""
-    parser = argparse.ArgumentParser(description="使用 Joern 提取代碼屬性圖 (CPGs)")
-    parser.add_argument("-i", "--input", help="輸入目錄路徑", type=str, required=True)
-    parser.add_argument("-o", "--output", help="輸出目錄路徑", type=str, required=True)
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Extract Code Property Graphs (CPGs) using Joern"
+    )
+    parser.add_argument(
+        "-i", "--input", help="Input directory path", type=str, required=True
+    )
+    parser.add_argument(
+        "-o", "--output", help="Output directory path", type=str, required=True
+    )
     parser.add_argument(
         "-t",
         "--type",
-        help="處理類型: parse 或 export",
+        help="Process type: parse or export",
         type=str,
         choices=["parse", "export"],
         required=True,
@@ -51,26 +48,26 @@ def parse_options() -> argparse.Namespace:
     parser.add_argument(
         "-r",
         "--repr",
-        help="表示類型: pdg 或 lineinfo_json",
+        help="Representation type: pdg or lineinfo_json",
         type=str,
         choices=["pdg", "lineinfo_json"],
         default="pdg",
     )
     parser.add_argument(
-        "-j", "--joern_path", help="Joern CLI 路徑", type=str, required=True
+        "-j", "--joern_path", help="Joern CLI path", type=str, required=True
     )
     parser.add_argument(
-        "-l", "--log_file", help="日誌檔案路徑", type=str, default="joern_process.log"
+        "-l", "--log_file", help="Log file path", type=str, default="joern_process.log"
     )
     return parser.parse_args()
 
 
 def setup_environment(joern_path: Path, logger: logging.Logger):
-    """設置環境變數並驗證 Joern"""
+    """Set up environment variables and validate Joern installation"""
     joern_path = joern_path.resolve()
     if not joern_path.exists():
-        logger.error(f"Joern 路徑不存在: {joern_path}")
-        sys.exit(1)
+        logger.error(f"Joern path does not exist: {joern_path}")
+        exit(1)
 
     os.environ["PATH"] = f"{joern_path}{os.pathsep}{os.environ['PATH']}"
     os.environ["JOERN_HOME"] = str(joern_path)
@@ -82,32 +79,27 @@ def setup_environment(joern_path: Path, logger: logging.Logger):
             capture_output=True,
             text=True,
         )
-        logger.info(f"Joern 版本: {result.stdout.strip()}")
+        logger.info(f"Joern version: {result.stdout.strip()}")
     except subprocess.CalledProcessError as e:
-        logger.error(f"無法運行 Joern: {e}")
-        sys.exit(1)
+        logger.error(f"Failed to run Joern: {e}")
+        exit(1)
 
 
 def run_subprocess(
-    cmd: List[str], error_msg: str, logger: logging.Logger, shell: bool = False
+    cmd: List[str], error_msg: str, logger: logging.Logger
 ) -> Optional[str]:
-    """運行子進程命令並處理潛在錯誤"""
+    """Run a subprocess command and handle potential errors"""
     try:
-        if shell:
-            cmd = " ".join(cmd)
-        result = subprocess.run(
-            cmd, check=True, capture_output=True, text=True, shell=shell
-        )
-        logger.info(f"成功運行命令: {cmd}")
+        logger.info(f"Executing command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logger.info(f"Command executed successfully. Output: {result.stdout}")
         return result.stdout
     except subprocess.CalledProcessError as e:
-        logger.error(f"{error_msg}:")
-        logger.error(f"命令: {cmd}")
-        logger.error(f"返回碼: {e.returncode}")
-        logger.error(f"錯誤輸出: {e.stderr}")
-        logger.error(f"標準輸出: {e.stdout}")
+        logger.error(f"{error_msg}: {e}")
+        logger.error(f"Return code: {e.returncode}")
+        logger.error(f"Error output: {e.stderr}")
     except Exception as e:
-        logger.error(f"{error_msg}: {str(e)}")
+        logger.error(f"{error_msg}: {str(e)}", exc_info=True)
     return None
 
 
@@ -118,34 +110,33 @@ def process_file(
     process_func: Callable,
     logger: logging.Logger,
 ):
-    """處理單個文件並記錄結果"""
+    """Process a single file and record the result"""
     with record_file.open("r+") as f:
         processed_files = set(f.read().splitlines())
         name = file.stem
         if name in processed_files:
-            logger.info(f"文件已處理: {name}")
+            logger.info(f"File already processed: {name}")
             return
 
         if process_func(file, outdir):
             f.write(f"{name}\n")
-            logger.info(f"已將 {name} 添加到記錄文件")
+            logger.info(f"Added {name} to record file")
 
 
 def joern_parse(
     file: Path, outdir: Path, joern_path: Path, logger: logging.Logger
 ) -> bool:
-    """使用 Joern 解析 C 文件"""
+    """Parse a C file using Joern"""
     name = file.stem
-    logger.info(f"正在處理文件: {name}")
+    logger.info(f"Processing file: {name}")
     out_file = outdir / f"{name}.bin"
 
     if out_file.exists():
-        logger.info(f"輸出文件已存在: {out_file}")
+        logger.info(f"Output file already exists: {out_file}")
         return True
 
-    joern_parse_path = joern_path / "joern-parse"
     cmd = [
-        str(joern_parse_path),
+        str(joern_path / "joern-parse"),
         str(file),
         "--language",
         "c",
@@ -153,21 +144,20 @@ def joern_parse(
         str(out_file),
     ]
 
-    return run_subprocess(cmd, f"解析文件 {file} 時出錯", logger) is not None
+    return run_subprocess(cmd, f"Error parsing file {file}", logger) is not None
 
 
 def joern_export(
     bin_file: Path, outdir: Path, repr: str, joern_path: Path, logger: logging.Logger
 ) -> bool:
-    """導出已解析的二進制文件為 PDG 或 JSON 格式"""
-    logger.info(f"開始導出進程: {bin_file}")
+    """Export parsed binary file to PDG or JSON format"""
+    logger.info(f"Starting export process: {bin_file}")
     name = bin_file.stem
     out_file = outdir / name
 
     if repr == "pdg":
-        joern_export_path = joern_path / "joern-export"
         cmd = [
-            str(joern_export_path),
+            str(joern_path / "joern-export"),
             str(bin_file),
             "--repr",
             "pdg",
@@ -175,134 +165,138 @@ def joern_export(
             str(out_file),
         ]
 
-        if run_subprocess(cmd, f"導出 PDG 時出錯: {bin_file}", logger):
-            if out_file.is_dir():
-                pdg_files = list(out_file.glob("*.dot"))
-                if pdg_files:
-                    merged_dot = out_file.with_suffix(".dot")
-                    logger.info(f"開始合併 PDG 文件到: {merged_dot}")
-                    try:
-                        with merged_dot.open("w", encoding="utf-8") as outfile:
-                            outfile.write("digraph G {\n")
-                            for pdg in pdg_files:
-                                logger.info(f"處理 PDG 文件: {pdg}")
-                                with pdg.open(encoding="utf-8") as infile:
-                                    content = infile.read()
-                                    # 移除開頭的 "digraph G {" 和結尾的 "}"
-                                    content = content.replace("digraph G {", "", 1)
-                                    content = content.rsplit("}", 1)[0]
-                                    outfile.write(f"subgraph cluster_{pdg.stem} {{\n")
-                                    outfile.write(content)
-                                    outfile.write("\n}\n")
-                            outfile.write("}")
-                        logger.info(f"成功合併 PDG 文件到: {merged_dot}")
-
-                        # 刪除原始的 PDG 目錄
-                        import shutil
-
-                        shutil.rmtree(out_file)
-                        logger.info(f"已刪除原始 PDG 目錄: {out_file}")
-
-                        return True
-                    except Exception as e:
-                        logger.error(f"合併 PDG 文件時發生錯誤: {e}")
-                        return False
-                else:
-                    logger.warning(f"未在 {out_file} 中找到 .dot 文件")
-                    return False
-            else:
-                logger.info(f"PDG 輸出已經是一個文件: {out_file}")
-                return True
-        else:
-            logger.error(f"Joern 導出命令失敗: {bin_file}")
-            return False
-    else:  # JSON 導出
-        out_file = out_file.with_suffix(".json")
-        script_path = Path("graph-for-funcs.sc").resolve()
-        if not script_path.exists():
-            logger.error(f"腳本文件不存在: {script_path}")
-            return False
-        cmd = [
-            str(joern_path / "joern"),
-            "--script",
-            str(script_path),
-            "--params",
-            f"inputPath={bin_file},outputPath={out_file}",
-        ]
-
-        if run_subprocess(cmd, f"導出 JSON 時出錯: {bin_file}", logger):
-            logger.info(f"成功導出 JSON: {out_file}")
-            return True
-        else:
-            logger.error(f"JSON 導出失敗: {bin_file}")
+        if run_subprocess(cmd, f"Error exporting PDG: {bin_file}", logger) is None:
             return False
 
-    # return False
+        return merge_pdg_files(out_file, logger)
+    else:  # JSON export
+        return export_json(bin_file, out_file, joern_path, logger)
+
+
+def merge_pdg_files(out_file: Path, logger: logging.Logger) -> bool:
+    """Merge multiple PDG files into a single .dot file"""
+    if not out_file.is_dir():
+        logger.info(f"PDG output is already a file: {out_file}")
+        return True
+
+    pdg_files = list(out_file.glob("*.dot"))
+    if not pdg_files:
+        logger.warning(f"No .dot files found in {out_file}")
+        return False
+
+    merged_dot = out_file.with_suffix(".dot")
+    logger.info(f"Merging PDG files to: {merged_dot}")
+
+    try:
+        with merged_dot.open("w", encoding="utf-8") as outfile:
+            outfile.write("digraph G {\n")
+            for pdg in pdg_files:
+                logger.info(f"Processing PDG file: {pdg}")
+                with pdg.open(encoding="utf-8") as infile:
+                    content = infile.read()
+                    content = content.replace("digraph G {", "", 1).rsplit("}", 1)[0]
+                    outfile.write(f"subgraph cluster_{pdg.stem} {{\n{content}\n}}\n")
+            outfile.write("}")
+
+        logger.info(f"Successfully merged PDG files to: {merged_dot}")
+        os.rmdir(out_file)
+        logger.info(f"Removed original PDG directory: {out_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Error merging PDG files: {e}", exc_info=True)
+        return False
+
+
+def export_json(
+    bin_file: Path, out_file: Path, joern_path: Path, logger: logging.Logger
+) -> bool:
+    """Export binary file to JSON format"""
+    out_file = out_file.with_suffix(".json")
+    script_path = Path("graph-for-funcs.sc").resolve()
+    if not script_path.exists():
+        logger.error(f"Script file does not exist: {script_path}")
+        return False
+
+    cmd = [
+        str(joern_path / "joern"),
+        "--script",
+        str(script_path),
+        "--params",
+        f"inputPath={bin_file},outputPath={out_file}",
+    ]
+
+    if run_subprocess(cmd, f"Error exporting JSON: {bin_file}", logger) is None:
+        return False
+
+    logger.info(f"Successfully exported JSON: {out_file}")
+    return True
 
 
 def main():
-    args = parse_options()
-    log_file = Path(args.log_file)
-    logger = setup_logging(log_file)
-    logger.info(f"開始 Joern 圖生成進程，參數: {args}")
+    args = parse_arguments()
+    logger = setup_logging(Path(args.log_file))
+    logger.info(f"Starting Joern graph generation process with parameters: {args}")
 
     joern_path = Path(args.joern_path).resolve()
     input_path = Path(args.input).resolve()
     output_path = Path(args.output).resolve()
 
-    logger.info(f"Joern 路徑: {joern_path}")
-    logger.info(f"輸入路徑: {input_path}")
-    logger.info(f"輸出路徑: {output_path}")
+    logger.info(f"Joern path: {joern_path}")
+    logger.info(f"Input path: {input_path}")
+    logger.info(f"Output path: {output_path}")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
     setup_environment(joern_path, logger)
 
     pool_num = os.cpu_count() or 1
-    logger.info(f"使用進程池，工作進程數: {pool_num}")
+    logger.info(f"Using process pool with {pool_num} workers")
 
     with Pool(pool_num) as pool:
         if args.type == "parse":
-            files = list(input_path.glob("*.c"))
-            logger.info(f"找到 {len(files)} 個 C 文件待解析")
-            record_file = output_path / "parse_res.txt"
-            record_file.touch(exist_ok=True)
-            pool.map(
-                partial(
-                    process_file,
-                    outdir=output_path,
-                    record_file=record_file,
-                    process_func=partial(
-                        joern_parse, joern_path=joern_path, logger=logger
-                    ),
-                    logger=logger,
-                ),
-                files,
-            )
+            process_parse(pool, input_path, output_path, joern_path, logger)
         elif args.type == "export":
-            bins = list(input_path.glob("*.bin"))
-            logger.info(f"找到 {len(bins)} 個二進制文件待導出")
-            record_file = output_path / "export_res.txt"
-            record_file.touch(exist_ok=True)
-            pool.map(
-                partial(
-                    process_file,
-                    outdir=output_path,
-                    record_file=record_file,
-                    process_func=partial(
-                        joern_export,
-                        repr=args.repr,
-                        joern_path=joern_path,
-                        logger=logger,
-                    ),
-                    logger=logger,
-                ),
-                bins,
-            )
+            process_export(pool, input_path, output_path, args.repr, joern_path, logger)
         else:
-            logger.error(f"無效的處理類型: {args.type}")
+            logger.error(f"Invalid process type: {args.type}")
 
-    logger.info("Joern 圖生成進程完成")
+    logger.info("Joern graph generation process completed")
+
+
+def process_parse(pool, input_path, output_path, joern_path, logger):
+    files = list(input_path.glob("*.c"))
+    logger.info(f"Found {len(files)} C files to parse")
+    record_file = output_path / "parse_res.txt"
+    record_file.touch(exist_ok=True)
+    pool.map(
+        partial(
+            process_file,
+            outdir=output_path,
+            record_file=record_file,
+            process_func=partial(joern_parse, joern_path=joern_path, logger=logger),
+            logger=logger,
+        ),
+        files,
+    )
+
+
+def process_export(pool, input_path, output_path, repr, joern_path, logger):
+    bins = list(input_path.glob("*.bin"))
+    logger.info(f"Found {len(bins)} binary files to export")
+    record_file = output_path / "export_res.txt"
+    record_file.touch(exist_ok=True)
+    pool.map(
+        partial(
+            process_file,
+            outdir=output_path,
+            record_file=record_file,
+            process_func=partial(
+                joern_export, repr=repr, joern_path=joern_path, logger=logger
+            ),
+            logger=logger,
+        ),
+        bins,
+    )
 
 
 if __name__ == "__main__":
